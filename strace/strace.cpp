@@ -12,48 +12,51 @@
 PLH::CapstoneDisassembler dis(PLH::Mode::x86);
 std::vector<std::shared_ptr<PLH::x86Detour>> detours;
 
-void logger_fx(std::string fxname)
+#define H(fx) (setlog(&fx, #fx, #fx))
+
+ void __cdecl logger_fx(const char* fxname) noexcept
 {
 	std::cout << (std::string("Called ") + fxname) << std::endl;
 }
 
-__declspec(naked) void fx()
+//#pragma const_seg(".t_const")
+#pragma optimize("", off)
+__declspec(naked) void fx() noexcept
 {
-	const char* function_name;
-	const void* logger_address;
-
-	function_name = "";
-	
-	logger_fx(function_name);
+	// OFFSET = 0
+	// 00A91350 B9 A0 0F 00 00       mov         ecx,0FA0h				<- to fix with the correct ptr to the function name
+	// 00A91355 E8 56 FE FF FF       call        logger_fx(0A911B0h)	<- to fix with the correct relative ptr to logger_fx
+	// Address offset = 6
+	logger_fx((const char*)0x42424242);
 
 	__asm nop
-	__asm push 0
+	__asm push 0x12345677											//	<- to fix with the correct pointer to the original function
 	__asm ret
 }
+__declspec(naked) void fxend() {}
+#pragma optimize("", on)
+//#pragma const_seg()
 
 void setlog(void* function_to_hook, const char *fxname = "", const char* fxdetails = "")
 {
-	
-	union splitter_t { void* ptr; struct { char a, b, c, d; }; } ;
-	static const splitter_t funcnameaddr = { (void*)fxname };
-	static const splitter_t logaddr = { (void*)&logger_fx };
-
-	// definition of the function
-	const char func[] = {
-	0x68, funcnameaddr.a, funcnameaddr.b, funcnameaddr.c, funcnameaddr.d, // push the fx name
-	0x9A, logaddr.a, logaddr.b, logaddr.c, logaddr.d, 0, 0,		// call the logger function									   
-	0x68, 0,0,0,0, 		// push the return address
-	0xC3				// ret
-	};
 
 	// Allocate memory for the function and make it executable
 	DWORD oldProtect;
-	char *newfx = (char*)malloc(sizeof(func));
-	auto vpres = VirtualProtect(newfx, sizeof(newfx), PAGE_EXECUTE_READWRITE, &oldProtect);
-	auto err = GetLastError();
+	auto newfxsz = (int)&fxend - (int)&fx;
+	char *newfx = (char*)malloc(newfxsz);
+
+	if (!newfx)
+	{
+		throw std::runtime_error("Unable to allocate memory for the hook !");
+	}
+
+	if (!VirtualProtect(newfx, newfxsz, PAGE_EXECUTE_READWRITE, &oldProtect))
+	{
+		throw std::runtime_error(std::string("VirtualProtect failed !"));
+	}
 
 	// Copy the content of the fx
-	memcpy(newfx, func, sizeof(func));
+	memcpy(newfx, &fx, newfxsz);
 
 	// Hook the function into the newly created one
 	uint64_t original;
@@ -66,14 +69,20 @@ void setlog(void* function_to_hook, const char *fxname = "", const char* fxdetai
 	));
 	detours.back()->hook();
 
-	// Update the pointers in the function
-	// *reinterpret_cast<char*>(newfx + 1) = (intptr_t)&logger;
-	*reinterpret_cast<char*>(newfx + 13) = (intptr_t)original;
+	// Fix values
+	*reinterpret_cast<intptr_t*>(newfx + 1 /*offset for func name*/) = (intptr_t)fxname;
+	*reinterpret_cast<intptr_t*>(newfx + 6 /*offset for log fx*/) -= (intptr_t)((int)newfx - (int)&fx);	 // Since we copy the fx somewhere else, fix the relative jump
+	*reinterpret_cast<intptr_t*>(newfx + 12 /*offset for jmp back*/) = (intptr_t)original;
 }
 
 int main()
 {   			
-	setlog(&MessageBoxA, "MessageBoxA");
-	setlog(&Beep);
-	Beep(1000, 10);
+	H(Beep);
+	H(MessageBoxA);
+
+	while (true)
+	{
+		Beep(1000, 10);
+		MessageBoxA(NULL, "A", "B", NULL);
+	}
 }
