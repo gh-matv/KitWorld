@@ -4,21 +4,17 @@
 #include <Windows.h>
 #include <iostream>
 
-// For stdcall fuckit
-template<typename T, typename... TParams>
-int GetNumOfParams(T( __stdcall *t)(TParams...))
+struct A
 {
-    return sizeof...(TParams);
-}
+    unsigned int i : 1;
+    // unsigned int j : 7;
+};
 
-template<typename T, typename... TParams>
-int GetNumOfParams(T (*t)(TParams...))
+int main()
 {
-    return sizeof...(TParams);
+    A a;
+    a.i = 0;
+    a.i++;
+    std::cout << ++a.i << " " << ++a.i << std::endl;
+    return 0;
 }
-
-int main(int argc, char *argv[])
-{
-    std::cout << GetNumOfParams(MessageBoxA) << std::endl;
-}
-

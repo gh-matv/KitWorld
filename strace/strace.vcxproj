@@ -153,6 +153,9 @@
   <ItemGroup>
     <ClCompile Include="strace.cpp" />
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="tracer.hpp" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
